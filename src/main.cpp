@@ -25,56 +25,24 @@
  * Optional: Show CPU usage and FPS count
  * #define LV_USE_PERF_MONITOR 1
  ******************************************************************************/
-//#include "lv_demo_widgets.h"
+// #include "lv_demo_widgets.h"
 #include <lvgl.h>
 #include <demos/lv_demos.h>
-/*******************************************************************************
- * Start of Arduino_GFX setting
- *
- * Arduino_GFX try to find the settings depends on selected board in Arduino IDE
- * Or you can define the display dev kit not in the board list
- * Defalult pin list for non display dev kit:
- * Arduino Nano, Micro and more: CS:  9, DC:  8, RST:  7, BL:  6, SCK: 13, MOSI: 11, MISO: 12
- * ESP32 various dev board     : CS:  5, DC: 27, RST: 33, BL: 22, SCK: 18, MOSI: 23, MISO: nil
- * ESP32-C3 various dev board  : CS:  7, DC:  2, RST:  1, BL:  3, SCK:  4, MOSI:  6, MISO: nil
- * ESP32-S2 various dev board  : CS: 34, DC: 35, RST: 33, BL: 21, SCK: 36, MOSI: 35, MISO: nil
- * ESP32-S3 various dev board  : CS: 40, DC: 41, RST: 42, BL: 48, SCK: 36, MOSI: 35, MISO: nil
- * ESP8266 various dev board   : CS: 15, DC:  4, RST:  2, BL:  5, SCK: 14, MOSI: 13, MISO: 12
- * Raspberry Pi Pico dev board : CS: 17, DC: 27, RST: 26, BL: 28, SCK: 18, MOSI: 19, MISO: 16
- * RTL8720 BW16 old patch core : CS: 18, DC: 17, RST:  2, BL: 23, SCK: 19, MOSI: 21, MISO: 20
- * RTL8720_BW16 Official core  : CS:  9, DC:  8, RST:  6, BL:  3, SCK: 10, MOSI: 12, MISO: 11
- * RTL8722 dev board           : CS: 18, DC: 17, RST: 22, BL: 23, SCK: 13, MOSI: 11, MISO: 12
- * RTL8722_mini dev board      : CS: 12, DC: 14, RST: 15, BL: 13, SCK: 11, MOSI:  9, MISO: 10
- * Seeeduino XIAO dev board    : CS:  3, DC:  2, RST:  1, BL:  0, SCK:  8, MOSI: 10, MISO:  9
- * Teensy 4.1 dev board        : CS: 39, DC: 41, RST: 40, BL: 22, SCK: 13, MOSI: 11, MISO: 12
- ******************************************************************************/
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <ui/ui.h>
+#include <mqttCallback.h>
+#include "openMeteo.h"
+const char *garageGatePayload = "OPEN_CLOSE";
+//
+WiFiClientSecure wifiClient;
+PubSubClient client(wifiClient); // lib required for mqtt
+MqttCallback callbackObject;
 #include <Arduino_GFX_Library.h>
 #define TFT_BL 2
 #define GFX_BL DF_GFX_BL // default backlight pin, you may replace DF_GFX_BL to actual backlight pin
 
-/* More dev device declaration: https://github.com/moononournation/Arduino_GFX/wiki/Dev-Device-Declaration */
-#if defined(DISPLAY_DEV_KIT)
-Arduino_GFX *gfx = create_default_Arduino_GFX();
-#else /* !defined(DISPLAY_DEV_KIT) */
-
-/* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
-//Arduino_DataBus *bus = create_default_Arduino_DataBus();
-
-/* More display class: https://github.com/moononournation/Arduino_GFX/wiki/Display-Class */
-//Arduino_GFX *gfx = new Arduino_ILI9341(bus, DF_GFX_RST, 0 /* rotation */, false /* IPS */);
-
-// according to GFX lib:
-
-// Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
- //   41 /* DE */, 40 /* VSYNC */, 39 /* HSYNC */, 42 /* PCLK */,
- //   14 /* R0 */, 21 /* R1 */, 47 /* R2 */, 48 /* R3 */, 45 /* R4 */,
-//    9 /* G0 */, 46 /* G1 */, 3 /* G2 */, 8 /* G3 */, 16 /* G4 */, 1 /* G5 */,
- //   15 /* B0 */, 7 /* B1 */, 6 /* B2 */, 5 /* B3 */, 4 /* B4 */,
- //   0 /* hsync_polarity */, 180 /* hsync_front_porch */, 30 /* hsync_pulse_width */, 16 /* hsync_back_porch */,
- //   0 /* vsync_polarity */, 12 /* vsync_front_porch */, 13 /* vsync_pulse_width */, 10 /* vsync_back_porch */); 
-   
-
-    // according to sunton:
 Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
     41 /* DE */, 40 /* VSYNC */, 39 /* HSYNC */, 42 /* PCLK */,
     15 /* R0 */, 7 /* R1 */, 6 /* R2 */, 5 /* R3 */, 4 /* R4 */,
@@ -85,22 +53,78 @@ Arduino_ESP32RGBPanel *rgbpanel = new Arduino_ESP32RGBPanel(
 Arduino_RGB_Display *gfx = new Arduino_RGB_Display(
     800 /* width */, 480 /* height */, rgbpanel, 0 /* rotation */, true /* auto_flush */);
 
-#endif /* !defined(DISPLAY_DEV_KIT) */
-/*******************************************************************************
- * End of Arduino_GFX setting
- ******************************************************************************/
-
-/*******************************************************************************
- * Please config the touch panel in touch.h
- ******************************************************************************/
 #include "touch.h"
 
-/* Change to your screen resolution */
 static uint32_t screenWidth;
 static uint32_t screenHeight;
 static lv_disp_draw_buf_t draw_buf;
 static lv_color_t *disp_draw_buf;
 static lv_disp_drv_t disp_drv;
+
+OpenWeatherMapOneCallData openWeatherMapOneCallData;
+OpenWeatherMapOneCall oneCallClient;
+void getHeapMemory()
+{
+  char temp[300];
+  sprintf(temp, "Heap: Free:%i, Min:%i, Size:%i, Alloc:%i",
+          ESP.getFreeHeap(), ESP.getMinFreeHeap(), ESP.getHeapSize(), ESP.getMaxAllocHeap());
+  Serial.println(temp);
+}
+
+void getPsram()
+{
+  char temp[300];
+  sprintf(temp, "PSRAM (total): %i \nFree PSRAM: %i \nMinPSR: %i \nAllocPSR: %i",
+          ESP.getPsramSize(), ESP.getFreePsram(), ESP.getMinFreePsram(), ESP.getMaxAllocPsram());
+  Serial.println(temp);
+}
+
+void reconnect()
+{
+  while (!client.connected())
+  {
+    Serial.println("Attempting MQTT connection...");
+    if (client.connect("ESP32_clientID1", mqttLogin, mqttPassword))
+    {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      // ... and resubscribe
+      client.subscribe(topicTemp);
+      client.subscribe(topicWind);
+      client.subscribe(topicWindDirection);
+      client.subscribe(topicPressure);
+      client.subscribe(topicHumidity);
+    }
+    else
+    {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      // delay(5000);
+    }
+  }
+}
+
+void connectmqtt()
+{
+
+  client.connect("ESP32_clientID1", mqttLogin, mqttPassword); // ESP will connect to mqtt broker with clientID
+  {
+    Serial.println("connected to MQTT");
+
+    client.subscribe(topicTemp);
+    client.subscribe(topicWind);
+    client.subscribe(topicWindDirection);
+    client.subscribe(topicPressure);
+    client.subscribe(topicHumidity);
+
+    if (!client.connected())
+    {
+      reconnect();
+    }
+  }
+}
 
 /* Display flushing */
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
@@ -128,10 +152,12 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
       /*Set the coordinates*/
       data->point.x = touch_last_x;
       data->point.y = touch_last_y;
+      /*
       Serial.print( "Data x " );
       Serial.println( data->point.x );
       Serial.print( "Data y " );
       Serial.println( data->point.y );
+      */
     }
     else if (touch_released())
     {
@@ -144,61 +170,132 @@ void my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
   }
 }
 
+void callback(char *topic, byte *payload, unsigned int length)
+{
+  callbackObject.callback(topic, payload, length);
+}
+
+void connecWifiMqtt()
+{
+  Serial.println("connecting to wifi");
+  WiFi.begin(wifiSSID, wifiPass);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.print(".");
+    delay(1000);
+  }
+  Serial.println("connected to wifi");
+  wifiClient.setInsecure();
+
+  client.setServer(mqttServer, 8883); // connecting to mqtt server
+  client.setCallback(callback);
+  delay(5000);
+  Serial.println("Connecting to mqtt");
+  connectmqtt();
+  Serial.println("Connected to mqtt");
+}
+void onGateClicked(lv_event_t *e)
+{
+  Serial.println("Gate clicked");
+  // client.publish(topicGate, "OPEN_CLOSE");
+}
+
+void onGarageGateClicked(lv_event_t *e)
+{
+  Serial.println("Garage Gate clicked");
+  // client.publish(topicGarageGate, "OPEN_CLOSE");
+}
+
+void onGarageOutsideLightClick(lv_event_t *e)
+{
+  refreshForecast(e);
+  auto ui_ChartTemperature_series_temp = lv_chart_get_series_next(ui_ChartTemperature, NULL);
+  auto ui_ChartTemperature_series_hum = lv_chart_get_series_next(ui_ChartTemperature, ui_ChartTemperature_series_temp);
+  for (int i = 0; i < 24; i++)
+  {
+    int16_t t = static_cast<u_int16_t>(round(openWeatherMapOneCallData.hourly[i].temp));
+    int16_t p = static_cast<u_int16_t>(round(openWeatherMapOneCallData.hourly[i].pressure));
+    lv_chart_set_next_value(ui_ChartTemperature, ui_ChartTemperature_series_temp, p);
+    lv_chart_set_next_value(ui_ChartTemperature, ui_ChartTemperature_series_hum, t);
+  }
+}
+
+void onGarageInsideLightClick(lv_event_t *e)
+{
+}
+float OPEN_WEATHER_MAP_LOCATTION_LAT = 51.0126;
+float OPEN_WEATHER_MAP_LOCATTION_LON = 18.4357;
+void refreshForecast(lv_event_t *e)
+{
+  oneCallClient.setMetric(true);
+  oneCallClient.setLanguage("pl");
+  oneCallClient.update(&openWeatherMapOneCallData, "Supla", OPEN_WEATHER_MAP_LOCATTION_LAT, OPEN_WEATHER_MAP_LOCATTION_LON);
+  Serial.println("Forecast");
+  Serial.println(openWeatherMapOneCallData.daily[1].tempDay);
+}
+
 void setup()
 {
-  //gfx->getFramebuffer;
-  //gfx->drawBitmap;
-  //gfx->drawPixel;
-  
   Serial.begin(115200);
-  // while (!Serial);
+  getHeapMemory();
+  getPsram();
+  connecWifiMqtt();
+  Serial.println("After wifi and mqtt");
+  getHeapMemory();
+  getPsram();
+
   Serial.println("LVGL Widgets Demo");
   // Init Display
   gfx->begin();
-  
+
 #ifdef TFT_BL
   pinMode(TFT_BL, OUTPUT);
   digitalWrite(TFT_BL, HIGH);
 
   ledcAttach(TFT_BL, 300, 8);
-  ledcWrite(TFT_BL, 255); // Screen brightness can be modified by adjusting this parameter. (0-255) 
-  
+  ledcWrite(TFT_BL, 255); // Screen brightness can be modified by adjusting this parameter. (0-255)
+
 #endif
 
   gfx->fillScreen(RED);
-  delay(500);
-  gfx->fillScreen(GREEN);
-  delay(500);
-  gfx->fillScreen(BLUE);
-  delay(500);
-  gfx->fillScreen(BLACK);
+  // delay(500);
+  // gfx->fillScreen(GREEN);
+  // delay(500);
+  // gfx->fillScreen(BLUE);
+  // delay(500);
+  // gfx->fillScreen(BLACK);
   delay(500);
   lv_init();
 
-    // Init touch device
+  // Init touch device
   pinMode(TOUCH_GT911_RST, OUTPUT);
   digitalWrite(TOUCH_GT911_RST, LOW);
   delay(10);
   digitalWrite(TOUCH_GT911_RST, HIGH);
   delay(10);
   touch_init();
-//  touch.setTouch( calData );
+  //  touch.setTouch( calData );
 
   screenWidth = gfx->width();
   screenHeight = gfx->height();
-#ifdef ESP32
-  disp_draw_buf = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * screenWidth *screenHeight/4  , MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-#else
-  disp_draw_buf = (lv_color_t *)malloc(sizeof(lv_color_t) * screenWidth *screenHeight/4);
-#endif
+  Serial.println("Before lvgl buffor allocation");
+  getHeapMemory();
+  getPsram();
+  disp_draw_buf = (lv_color_t *)heap_caps_malloc(sizeof(lv_color_t) * screenWidth * screenHeight / 4, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+
   if (!disp_draw_buf)
   {
     Serial.println("LVGL disp_draw_buf allocate failed!");
+    getHeapMemory();
+    getPsram();
   }
   else
   {
-    lv_disp_draw_buf_init(&draw_buf, disp_draw_buf, NULL, screenWidth *screenHeight/4);
+    lv_disp_draw_buf_init(&draw_buf, disp_draw_buf, NULL, screenWidth * screenHeight / 4);
 
+    Serial.println("After lvgl buffor allocation");
+    getHeapMemory();
+    getPsram();
     /* Initialize the display */
     lv_disp_drv_init(&disp_drv);
     /* Change the following line to your display resolution */
@@ -215,14 +312,25 @@ void setup()
     indev_drv.read_cb = my_touchpad_read;
     lv_indev_drv_register(&indev_drv);
 
-    lv_demo_widgets();
-    //lv_demo_music(); 
+    ui_init();
+    lv_chart_set_update_mode(ui_ChartTemperature, LV_CHART_UPDATE_MODE_SHIFT);
+    // lv_chart_set_range(ui_ChartTemperature, LV_CHART_AXIS_PRIMARY_X, -15, 30);
+    // lv_chart_set_range(ui_ChartTemperature, LV_CHART_AXIS_PRIMARY_Y, 0, 15);
+    // lv_chart_set_range(ui_ChartTemperature, LV_CHART_AXIS_SECONDARY_Y, -5, 15);
     Serial.println("Setup done");
   }
 }
 
 void loop()
 {
+
+  if (!client.connected())
+  {
+    reconnect();
+  }
+
+  client.loop();
+
   lv_timer_handler(); /* let the GUI do its work */
   delay(5);
 }

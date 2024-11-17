@@ -1,0 +1,19 @@
+SET(SOURCES ui_Screen1.c
+    ui_Screen3.c
+    ui.c
+    ui_comp_hook.c
+    ui_helpers.c
+    ui_events.c
+    ui_img_supla_png.c
+    ui_img_gate_png.c
+    ui_img_garage_5178_png.c
+    ui_img_humidity_weather_icon_129724_png.c
+    ui_img_1874206717.c
+    ui_img_598496956.c
+    ui_img_1694814665.c
+    ui_img_1813840028.c
+    ui_img_111313662.c
+    ui_img_2048757971.c
+    ui_img_lightbulb_114833_png.c)
+
+add_library(ui ${SOURCES})
