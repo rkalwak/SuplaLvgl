@@ -2,6 +2,8 @@
 
 In constant development.
 
+![image1](screen1.jpg)
+
 ## Hardware
 
 7 Cal ESP32-S3 monitor TFT dla Arduino HMI 8M PSRAM 16M Flash Lvgl WiFi Bluetooth 800*480 capacitive touch
@@ -20,6 +22,8 @@ LVGL 8.3 running on latest esp32-s3-devkitc boards, compiled using Platform.IO w
 ## Software settings
 
 Define secrets.ini file with content below:
+
+```
 [env:esp32s3dev]
 build_flags = 
 	-D wifiSSID='"ssid"'
@@ -33,6 +37,7 @@ build_flags =
     -D mqttServer='"mqtt<SERVER>.supla.org"'
     -D mqttLogin='"<MQTT_USERNAME>"'
     -D mqttPasswor='"<MQTT_PASSWORD>"'
+```
 
 ### Software features
 
